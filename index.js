@@ -11,12 +11,21 @@ const {
 } = require('discord.js');
 
 const mongoose = require('mongoose');
+const express = require('express');
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds]
+const app = express();
+
+// 🌐 KEEP ALIVE (Render)
+app.get('/', (req, res) => {
+    res.send('Bot taxi attivo 🚖');
 });
 
-// 🔥 CONFIG (GIÀ INSERITI)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🌐 Keep alive attivo su porta ${PORT}`);
+});
+
+// 🔥 CONFIG (I TUOI ID)
 const STAFF_ROLE_ID = "1455329952395296901";
 const DRIVER_ROLE_ID = "1455329847122591918";
 const TAXI_CHANNEL_ID = "1455213769348350055";
@@ -24,7 +33,11 @@ const LOG_CHANNEL_ID = "1497716230130368642";
 const PANEL_CHANNEL_ID = "1497717183231557793";
 const OWNER_ROLE_ID = "1489313212586524742";
 
-// 🔗 MONGO
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds]
+});
+
+// 🔗 MONGODB
 mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log('✅ MongoDB connesso'))
 .catch(err => console.log(err));
@@ -50,16 +63,18 @@ client.once('ready', () => {
 // ================= INTERAZIONI =================
 client.on('interactionCreate', async interaction => {
 
-    // ================= SLASH =================
+    // ===== SLASH =====
     if (interaction.isChatInputCommand()) {
 
         const isStaff = interaction.member.roles.cache.has(STAFF_ROLE_ID);
         const isDriver = interaction.member.roles.cache.has(DRIVER_ROLE_ID);
         const isOwner = interaction.member.roles.cache.has(OWNER_ROLE_ID);
 
-        // 🚖 CREA PANNELLO
+        // 🚖 PANNELLO
         if (interaction.commandName === 'pannello-taxi') {
-            if (!isStaff) return interaction.reply({ content: '❌ No permessi.', ephemeral: true });
+
+            if (!isStaff)
+                return interaction.reply({ content: '❌ No permessi.', ephemeral: true });
 
             const button = new ButtonBuilder()
                 .setCustomId('chiama_taxi')
@@ -81,12 +96,12 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: '✅ Pannello inviato.', ephemeral: true });
         }
 
-        // ================= SHIFT (UNIFICATO) =================
+        // ===== SHIFT =====
 
         if (interaction.commandName === 'entra-shift') {
 
             if (!isDriver)
-                return interaction.reply({ content: '❌ Non sei un taxista.', ephemeral: true });
+                return interaction.reply({ content: '❌ Non sei taxista.', ephemeral: true });
 
             let data = await Shift.findOne({ userId: interaction.user.id });
             if (!data) data = new Shift({ userId: interaction.user.id });
@@ -97,7 +112,7 @@ client.on('interactionCreate', async interaction => {
 
             await data.save();
 
-            return interaction.reply('✅ Sei entrato in servizio (shift attivo)');
+            return interaction.reply('✅ Entrato in servizio');
         }
 
         if (interaction.commandName === 'esci-shift') {
@@ -115,13 +130,13 @@ client.on('interactionCreate', async interaction => {
 
             await data.save();
 
-            return interaction.reply('❌ Sei uscito dal servizio');
+            return interaction.reply('❌ Uscito dal servizio');
         }
 
         if (interaction.commandName === 'fine-corsa') {
 
             if (!driverOccupati.has(interaction.user.id))
-                return interaction.reply({ content: '❌ Nessuna corsa attiva.', ephemeral: true });
+                return interaction.reply({ content: '❌ Nessuna corsa.', ephemeral: true });
 
             driverOccupati.delete(interaction.user.id);
 
@@ -142,7 +157,8 @@ client.on('interactionCreate', async interaction => {
 
             let lista = await Shift.find();
 
-            if (!lista.length) return interaction.reply('❌ Nessun dato.');
+            if (!lista.length)
+                return interaction.reply('❌ Nessun dato.');
 
             let testo = lista.map(data => {
 
@@ -170,8 +186,7 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // ================= STAFF =================
-
+        // ===== RESET =====
         if (interaction.commandName === 'reset-shift') {
 
             if (!isOwner)
@@ -183,7 +198,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // ================= MODAL =================
+    // ===== MODAL =====
     if (interaction.isModalSubmit()) {
 
         let drivers = await Shift.find({ inShift: true, pausa: false });
@@ -208,20 +223,20 @@ client.on('interactionCreate', async interaction => {
             )
             .setTimestamp();
 
-        const channel = await client.channels.fetch(TAXI_CHANNEL_ID);
-        const log = await client.channels.fetch(LOG_CHANNEL_ID);
+        const taxiChannel = await client.channels.fetch(TAXI_CHANNEL_ID);
+        const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
 
-        await channel.send({
+        await taxiChannel.send({
             content: `<@&${DRIVER_ROLE_ID}> 🚖 Nuova corsa!`,
             embeds: [embed]
         });
 
-        await log.send({ embeds: [embed] });
+        await logChannel.send({ embeds: [embed] });
 
         return interaction.reply({ content: '✅ Taxi chiamato', ephemeral: true });
     }
 
-    // ================= BOTTONE =================
+    // ===== BOTTONE =====
     if (interaction.isButton()) {
 
         if (interaction.customId === 'chiama_taxi') {
