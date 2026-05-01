@@ -7,25 +7,26 @@ const {
     ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle
+    TextInputStyle,
+    REST,
+    Routes,
+    SlashCommandBuilder
 } = require('discord.js');
 
 const mongoose = require('mongoose');
 const express = require('express');
 
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds]
+});
+
+// 🌐 KEEP ALIVE
 const app = express();
-
-// 🌐 KEEP ALIVE (Render)
-app.get('/', (req, res) => {
-    res.send('Bot taxi attivo 🚖');
-});
-
+app.get('/', (req, res) => res.send('Bot taxi attivo 🚖'));
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🌐 Keep alive attivo su porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🌐 Server attivo su ${PORT}`));
 
-// 🔥 CONFIG (I TUOI ID)
+// 🔥 CONFIG
 const STAFF_ROLE_ID = "1455329952395296901";
 const DRIVER_ROLE_ID = "1455329847122591918";
 const TAXI_CHANNEL_ID = "1455213769348350055";
@@ -33,216 +34,173 @@ const LOG_CHANNEL_ID = "1497716230130368642";
 const PANEL_CHANNEL_ID = "1497717183231557793";
 const OWNER_ROLE_ID = "1489313212586524742";
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds]
-});
-
-// 🔗 MONGODB
+// 🔗 MONGO
 mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log('✅ MongoDB connesso'))
-.catch(err => console.log(err));
+.catch(console.error);
 
-// 🧠 SHIFT SCHEMA
+// 🧠 DB
 const shiftSchema = new mongoose.Schema({
     userId: String,
     tempo: { type: Number, default: 0 },
     inShift: { type: Boolean, default: false },
-    pausa: { type: Boolean, default: false },
-    start: { type: Number, default: 0 }
+    start: Number
 });
-
 const Shift = mongoose.model('Shift', shiftSchema);
 
-// 🚕 DRIVER
 let driverOccupati = new Set();
 
-client.once('ready', () => {
+// 🚀 READY + AUTO DEPLOY COMANDI
+client.once('ready', async () => {
     console.log(`✅ Online come ${client.user.tag}`);
+
+    const commands = [
+        new SlashCommandBuilder().setName('pannello-taxi').setDescription('Invia pannello'),
+        new SlashCommandBuilder().setName('entra-shift').setDescription('Entra in servizio'),
+        new SlashCommandBuilder().setName('esci-shift').setDescription('Esci dal servizio'),
+        new SlashCommandBuilder().setName('fine-corsa').setDescription('Termina corsa'),
+        new SlashCommandBuilder().setName('shift-stats').setDescription('Statistiche'),
+        new SlashCommandBuilder().setName('reset-shift').setDescription('Reset shift')
+    ].map(cmd => cmd.toJSON());
+
+    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+    try {
+        await rest.put(
+            Routes.applicationGuildCommands(
+                process.env.CLIENT_ID,
+                process.env.GUILD_ID
+            ),
+            { body: commands }
+        );
+        console.log('✅ Comandi registrati');
+    } catch (err) {
+        console.error(err);
+    }
 });
 
 // ================= INTERAZIONI =================
 client.on('interactionCreate', async interaction => {
 
-    // ===== SLASH =====
     if (interaction.isChatInputCommand()) {
 
         const isStaff = interaction.member.roles.cache.has(STAFF_ROLE_ID);
         const isDriver = interaction.member.roles.cache.has(DRIVER_ROLE_ID);
         const isOwner = interaction.member.roles.cache.has(OWNER_ROLE_ID);
 
-        // 🚖 PANNELLO
         if (interaction.commandName === 'pannello-taxi') {
+            if (!isStaff) return interaction.reply({ content: '❌ No permessi', ephemeral: true });
 
-            if (!isStaff)
-                return interaction.reply({ content: '❌ No permessi.', ephemeral: true });
-
-            const button = new ButtonBuilder()
+            const btn = new ButtonBuilder()
                 .setCustomId('chiama_taxi')
                 .setLabel('🚖 Chiama Taxi')
                 .setStyle(ButtonStyle.Primary);
 
-            const channel = await client.channels.fetch(PANEL_CHANNEL_ID);
+            const ch = await client.channels.fetch(PANEL_CHANNEL_ID);
 
-            await channel.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor('Yellow')
-                        .setTitle('🚖 CENTRALE TAXI')
-                        .setDescription('Premi per richiedere un taxi')
-                ],
-                components: [new ActionRowBuilder().addComponents(button)]
+            await ch.send({
+                embeds: [new EmbedBuilder()
+                    .setColor('Yellow')
+                    .setTitle('🚖 CENTRALE TAXI')
+                    .setDescription('Premi per chiamare un taxi')],
+                components: [new ActionRowBuilder().addComponents(btn)]
             });
 
-            return interaction.reply({ content: '✅ Pannello inviato.', ephemeral: true });
+            return interaction.reply({ content: '✅ Pannello inviato', ephemeral: true });
         }
 
-        // ===== SHIFT =====
-
         if (interaction.commandName === 'entra-shift') {
+            if (!isDriver) return interaction.reply({ content: '❌ Non sei taxista', ephemeral: true });
 
-            if (!isDriver)
-                return interaction.reply({ content: '❌ Non sei taxista.', ephemeral: true });
+            let d = await Shift.findOne({ userId: interaction.user.id }) || new Shift({ userId: interaction.user.id });
 
-            let data = await Shift.findOne({ userId: interaction.user.id });
-            if (!data) data = new Shift({ userId: interaction.user.id });
+            d.inShift = true;
+            d.start = Date.now();
+            await d.save();
 
-            data.inShift = true;
-            data.pausa = false;
-            data.start = Date.now();
-
-            await data.save();
-
-            return interaction.reply('✅ Entrato in servizio');
+            return interaction.reply('✅ In servizio');
         }
 
         if (interaction.commandName === 'esci-shift') {
+            let d = await Shift.findOne({ userId: interaction.user.id });
 
-            let data = await Shift.findOne({ userId: interaction.user.id });
+            if (!d || !d.inShift) return interaction.reply({ content: '❌ Non sei in shift', ephemeral: true });
 
-            if (!data || !data.inShift)
-                return interaction.reply({ content: '❌ Non sei in shift.', ephemeral: true });
-
-            if (!data.pausa)
-                data.tempo += Date.now() - data.start;
-
-            data.inShift = false;
+            d.tempo += Date.now() - d.start;
+            d.inShift = false;
             driverOccupati.delete(interaction.user.id);
 
-            await data.save();
+            await d.save();
 
-            return interaction.reply('❌ Uscito dal servizio');
+            return interaction.reply('❌ Fuori servizio');
         }
 
         if (interaction.commandName === 'fine-corsa') {
-
-            if (!driverOccupati.has(interaction.user.id))
-                return interaction.reply({ content: '❌ Nessuna corsa.', ephemeral: true });
-
             driverOccupati.delete(interaction.user.id);
 
-            return interaction.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor('Green')
-                        .setTitle('🚕 CORSA TERMINATA')
-                        .addFields(
-                            { name: 'Driver', value: `${interaction.user}` },
-                            { name: 'Stato', value: '✅ Disponibile' }
-                        )
-                ]
-            });
+            return interaction.reply('🚕 Ora sei disponibile');
         }
 
         if (interaction.commandName === 'shift-stats') {
-
             let lista = await Shift.find();
 
-            if (!lista.length)
-                return interaction.reply('❌ Nessun dato.');
-
-            let testo = lista.map(data => {
-
-                let tempo = data.tempo;
-
-                if (data.inShift && !data.pausa)
-                    tempo += Date.now() - data.start;
+            let txt = lista.map(d => {
+                let tempo = d.tempo;
+                if (d.inShift) tempo += Date.now() - d.start;
 
                 let ore = (tempo / 3600000).toFixed(1);
-
-                let stato = '❌ Depex';
-                if (ore >= 5) stato = '⚠️ Possibile Pex';
-                if (ore >= 8) stato = '✅ Pex assicurato';
-
-                return `<@${data.userId}> → ${ore}h → ${stato}`;
+                return `<@${d.userId}> → ${ore}h`;
             }).join('\n');
 
-            return interaction.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor('Blue')
-                        .setTitle('📊 SHIFT TAXI')
-                        .setDescription(testo)
-                ]
-            });
+            return interaction.reply({ embeds: [new EmbedBuilder().setDescription(txt || 'Nessun dato')] });
         }
 
-        // ===== RESET =====
         if (interaction.commandName === 'reset-shift') {
-
-            if (!isOwner)
-                return interaction.reply({ content: '❌ Solo dirigenza.', ephemeral: true });
+            if (!isOwner) return interaction.reply({ content: '❌ Solo owner', ephemeral: true });
 
             await Shift.deleteMany({});
-
-            return interaction.reply('♻️ Shift resettati.');
+            return interaction.reply('♻️ Reset fatto');
         }
     }
 
     // ===== MODAL =====
     if (interaction.isModalSubmit()) {
 
-        let drivers = await Shift.find({ inShift: true, pausa: false });
+        let drivers = await Shift.find({ inShift: true });
+        let libero = drivers.find(d => !driverOccupati.has(d.userId));
 
-        if (drivers.length === 0)
-            return interaction.reply({ content: '❌ Nessun driver disponibile.', ephemeral: true });
+        if (!libero)
+            return interaction.reply({ content: '❌ Nessun driver', ephemeral: true });
 
-        let disponibile = drivers.find(d => !driverOccupati.has(d.userId));
-
-        if (!disponibile)
-            return interaction.reply({ content: '❌ Tutti occupati.', ephemeral: true });
-
-        driverOccupati.add(disponibile.userId);
+        driverOccupati.add(libero.userId);
 
         const embed = new EmbedBuilder()
-            .setColor('Green')
-            .setTitle('🚖 CORSA ASSEGNATA')
+            .setTitle('🚖 NUOVA CORSA')
             .addFields(
                 { name: 'Cliente', value: `${interaction.user}` },
-                { name: 'Driver', value: `<@${disponibile.userId}>` },
-                { name: 'Stato', value: '🚫 Occupato' }
-            )
-            .setTimestamp();
+                { name: 'Driver', value: `<@${libero.userId}>` }
+            );
 
-        const taxiChannel = await client.channels.fetch(TAXI_CHANNEL_ID);
-        const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
+        const taxiCh = await client.channels.fetch(TAXI_CHANNEL_ID);
+        const logCh = await client.channels.fetch(LOG_CHANNEL_ID);
 
-        await taxiChannel.send({
-            content: `<@&${DRIVER_ROLE_ID}> 🚖 Nuova corsa!`,
+        await taxiCh.send({
+            content: `<@&${DRIVER_ROLE_ID}> 🚖 Nuova corsa`,
             embeds: [embed]
         });
 
-        await logChannel.send({ embeds: [embed] });
+        await logCh.send({ embeds: [embed] });
 
         return interaction.reply({ content: '✅ Taxi chiamato', ephemeral: true });
     }
 
-    // ===== BOTTONE =====
+    // ===== BUTTON =====
     if (interaction.isButton()) {
 
         if (interaction.customId === 'chiama_taxi') {
 
             const modal = new ModalBuilder()
-                .setCustomId('modulo_taxi')
+                .setCustomId('modulo')
                 .setTitle('Richiesta Taxi');
 
             modal.addComponents(
