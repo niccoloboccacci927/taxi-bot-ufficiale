@@ -43,9 +43,9 @@ const client = new Client({
 const STAFF_ROLE_ID = "1455329952395296901";
 const DRIVER_ROLE_ID = "1455329847122591918";
 
-const TAXI_CHANNEL_ID = "1455213769348350055";
+const TAXI_CHANNEL_ID = "1468316689174364374";
 const LOG_CHANNEL_ID = "1497716230130368642";
-const PANEL_CHANNEL_ID = "1497717183231557793";
+const PANEL_CHANNEL_ID = "1455328423156252824";
 
 const OWNER_ROLE_ID = "1489313212586524742";
 
@@ -193,6 +193,55 @@ const commands = [
     new SlashCommandBuilder()
     .setName('reset-shift')
     .setDescription('Resetta shift'),
+
+// ================= TAXI DISPONIBILI =================
+new SlashCommandBuilder()
+
+.setName('taxi-disponibili')
+
+.setDescription(
+    'Mostra i taxisti disponibili'
+),
+
+// ================= RIMUOVI SANZIONE =================
+new SlashCommandBuilder()
+
+.setName('rimuovi-sanzione')
+
+.setDescription(
+    'Rimuovi una sanzione'
+)
+
+.addUserOption(o =>
+
+    o.setName('utente')
+
+    .setDescription('Taxista')
+
+    .setRequired(true)
+)
+
+.addStringOption(o =>
+
+    o.setName('tipo')
+
+    .setDescription('Tipo')
+
+    .setRequired(true)
+
+    .addChoices(
+
+        {
+            name: 'Warn',
+            value: 'warn'
+        },
+
+        {
+            name: 'Strike',
+            value: 'strike'
+        }
+    )
+),
 
     // ================= BLACKLIST =================
     new SlashCommandBuilder()
@@ -1338,6 +1387,229 @@ ${pex}
             });
     }
 });
+// ================= TAXI DISPONIBILI =================
+if (interaction.commandName === 'taxi-disponibili') {
 
+    const drivers = await Shift.find();
+
+    if (!drivers.length)
+
+        return interaction.reply({
+
+            content: '❌ Nessun taxista trovato',
+
+            ephemeral: true
+        });
+
+    const lista = drivers.map(driver => {
+
+        let emoji = '🔴';
+
+        let statoTesto = 'Offline';
+
+        // ================= DISPONIBILE =================
+        if (
+            driver.inShift &&
+            driver.stato === 'Disponibile'
+        ) {
+
+            emoji = '🟢';
+
+            statoTesto = 'Disponibile';
+        }
+
+        // ================= OCCUPATO =================
+        if (
+            driver.inShift &&
+            driver.stato === 'Occupato'
+        ) {
+
+            emoji = '🔴';
+
+            statoTesto = 'Occupato';
+        }
+
+        // ================= PAUSA =================
+        if (
+            driver.inShift &&
+            driver.stato === 'Pausa'
+        ) {
+
+            emoji = '🟡';
+
+            statoTesto = 'In Pausa';
+        }
+
+        // ================= OFFLINE =================
+        if (!driver.inShift) {
+
+            emoji = '⚫';
+
+            statoTesto = 'Offline';
+        }
+
+        let tempo = driver.tempo;
+
+        if (driver.inShift)
+            tempo += Date.now() - driver.start;
+
+        const ore =
+        (tempo / 3600000).toFixed(1);
+
+        let media = '0';
+
+        if (driver.recensioni.length) {
+
+            media = (
+
+                driver.recensioni.reduce(
+                    (a, b) => a + b,
+                    0
+                )
+
+                / driver.recensioni.length
+
+            ).toFixed(1);
+        }
+
+        return `
+${emoji} <@${driver.userId}>
+
+📌 Stato: ${statoTesto}
+
+🚖 Corse: ${driver.corse}
+
+⭐ Media: ${media}
+
+⏱️ Ore Shift: ${ore}h
+`;
+
+    }).join('\n━━━━━━━━━━━━━━\n');
+
+    const embed = new EmbedBuilder()
+
+    .setColor('Yellow')
+
+    .setTitle('🚖 TAXI DISPONIBILI')
+
+    .setDescription(lista)
+
+    .setFooter({
+        text:
+        '🟢 Disponibile | 🔴 Occupato | 🟡 Pausa | ⚫ Offline'
+    })
+
+    .setTimestamp();
+
+    return interaction.reply({
+
+        embeds: [embed]
+    });
+}
+
+// ================= RIMUOVI SANZIONE =================
+if (interaction.commandName === 'rimuovi-sanzione') {
+
+    if (!isStaff)
+
+        return interaction.reply({
+
+            content: '❌ No permessi',
+
+            ephemeral: true
+        });
+
+    const user =
+    interaction.options.getUser('utente');
+
+    const tipo =
+    interaction.options.getString('tipo');
+
+    let dati =
+    await Sanzioni.findOne({
+
+        userId: user.id
+    });
+
+    if (!dati)
+
+        return interaction.reply({
+
+            content:
+            '❌ Questo taxista non ha sanzioni',
+
+            ephemeral: true
+        });
+
+    // ================= WARN =================
+    if (tipo === 'warn') {
+
+        if (dati.warn <= 0)
+
+            return interaction.reply({
+
+                content:
+                '❌ Questo taxista non ha warn',
+
+                ephemeral: true
+            });
+
+        dati.warn -= 1;
+    }
+
+    // ================= STRIKE =================
+    if (tipo === 'strike') {
+
+        if (dati.strike <= 0)
+
+            return interaction.reply({
+
+                content:
+                '❌ Questo taxista non ha strike',
+
+                ephemeral: true
+            });
+
+        dati.strike -= 1;
+    }
+
+    await dati.save();
+
+    const embed = new EmbedBuilder()
+
+    .setColor('Green')
+
+    .setTitle('✅ SANZIONE RIMOSSA')
+
+    .addFields(
+
+        {
+            name: '👤 Taxista',
+            value: `${user}`
+        },
+
+        {
+            name: '📌 Tipo Rimosso',
+            value: tipo
+        },
+
+        {
+            name: '⚠️ Warn Rimasti',
+            value: `${dati.warn}`
+        },
+
+        {
+            name: '🚨 Strike Rimasti',
+            value: `${dati.strike}`
+        }
+    )
+
+    .setTimestamp();
+
+    return interaction.reply({
+
+        embeds: [embed]
+    });
+}
 // ================= LOGIN =================
 client.login(process.env.TOKEN);
