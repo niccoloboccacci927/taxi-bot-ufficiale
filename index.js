@@ -281,21 +281,27 @@ new SlashCommandBuilder()
         .setRequired(true)
     )
 
-    .addStringOption(o =>
-        o.setName('tipo')
-        .setDescription('Tipo')
-        .setRequired(true)
+  .addStringOption(o =>
 
-        .addChoices(
-            {
-                name: 'Warn',
-                value: 'warn'
-            },
+    o.setName('tipo')
 
-            {
-                name: 'Strike',
-                value: 'strike'
-            },
+    .setDescription('Tipo')
+
+    .setRequired(true)
+
+    .addChoices(
+
+        {
+            name: 'Warn',
+            value: 'warn'
+        },
+
+        {
+            name: 'Strike',
+            value: 'strike'
+        }
+      )
+    ),
 
             {
                 name: 'Licenziamento',
