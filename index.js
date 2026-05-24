@@ -240,8 +240,7 @@ new SlashCommandBuilder()
             name: 'Strike',
             value: 'strike'
         }
-    )
-),
+    ),
 
     // ================= BLACKLIST =================
     new SlashCommandBuilder()
