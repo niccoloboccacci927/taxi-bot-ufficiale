@@ -442,11 +442,11 @@ if (interaction.commandName === 'taxi-disponibili') {
 
         // ================= DISPONIBILE =================
         if (
-            driver.inShift &&
-            driver.stato === 'Disponibile'
+        driver.inShift &&
+        driver.stato === 'Disponibile'
         ) {
 
-            emoji = '🟢';
+              emoji = '🟢';
 
             statoTesto = 'Disponibile';
         }
@@ -1616,5 +1616,15 @@ ${pex}
             });
     }
 });
+console.log("Avvio bot...");
+
+client.on('error', console.error);
+client.on('warn', console.warn);
+
+process.on('unhandledRejection', console.error);
+process.on('uncaughtException', console.error);
+
 // ================= LOGIN =================
 client.login(process.env.TOKEN);
+
+
