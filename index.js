@@ -271,58 +271,47 @@ new SlashCommandBuilder()
     ),
 
     // ================= SANZIONI =================
-    new SlashCommandBuilder()
-    .setName('sanziona')
-    .setDescription('Sanziona taxista')
+new SlashCommandBuilder()
+.setName('sanziona')
+.setDescription('Sanziona taxista')
 
-    .addUserOption(o =>
-        o.setName('utente')
-        .setDescription('Taxista')
-        .setRequired(true)
-    )
-
-  .addStringOption(o =>
-
-    o.setName('tipo')
-
-    .setDescription('Tipo')
-
+.addUserOption(o =>
+    o.setName('utente')
+    .setDescription('Taxista')
     .setRequired(true)
+)
 
+.addStringOption(o =>
+    o.setName('tipo')
+    .setDescription('Tipo')
+    .setRequired(true)
     .addChoices(
-
         {
             name: 'Warn',
             value: 'warn'
         },
-
         {
             name: 'Strike',
             value: 'strike'
+        },
+        {
+            name: 'Licenziamento',
+            value: 'licenziamento'
         }
-      )
-    ),
-
-            {
-                name: 'Licenziamento',
-                value: 'licenziamento'
-            }
-        )
     )
+)
 
-    .addStringOption(o =>
-        o.setName('motivo')
-        .setDescription('Motivo')
-        .setRequired(true)
-    )
+.addStringOption(o =>
+    o.setName('motivo')
+    .setDescription('Motivo')
+    .setRequired(true)
+)
 
-    .addStringOption(o =>
-        o.setName('durata')
-        .setDescription('Durata')
-        .setRequired(false)
-    )
-
-].map(c => c.toJSON());
+.addStringOption(o =>
+    o.setName('durata')
+    .setDescription('Durata')
+    .setRequired(false)
+),
 
 // ================= READY =================
 client.once('ready', async () => {
