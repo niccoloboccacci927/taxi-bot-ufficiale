@@ -313,6 +313,8 @@ new SlashCommandBuilder()
     .setRequired(false)
 ),
 
+].map(c => c.toJSON());
+
 // ================= READY =================
 client.once('ready', async () => {
 
