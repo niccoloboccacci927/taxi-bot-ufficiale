@@ -39,6 +39,20 @@ const client = new Client({
     ]
 });
 
+client.on('disconnect', () => {
+    console.log('DISCONNECT');
+});
+
+client.on('error', console.error);
+
+client.on('shardDisconnect', (event, id) => {
+    console.log('SHARD DISCONNECT', id);
+});
+
+client.on('shardReconnecting', id => {
+    console.log('SHARD RECONNECTING', id);
+});
+
 // ================= CONFIG =================
 const STAFF_ROLE_ID = "1455329952395296901";
 const DRIVER_ROLE_ID = "1455329847122591918";
@@ -318,6 +332,8 @@ new SlashCommandBuilder()
 // ================= READY =================
 client.once('ready', async () => {
 
+    console.log('READY');
+
     console.log(`✅ Online come ${client.user.tag}`);
 
     const rest = new REST({
@@ -346,13 +362,21 @@ client.once('ready', async () => {
         console.log(err);
     }
 });
-// ================= INTERAZIONI =================
+
+// ================= INTERAZIONI ================= //
 client.on('interactionCreate', async interaction => {
+
+    console.log('Interazione ricevuta');
 
     try {
 
         // ================= SLASH COMMANDS =================
+              
         if (interaction.isChatInputCommand()) {
+
+            console.log('Comando:', interaction.commandName);
+
+            console.log('Interazione ricevuta');
 
             const isStaff = interaction.member.roles.cache.has(STAFF_ROLE_ID);
 
@@ -1593,20 +1617,27 @@ ${pex}
             }
         }
 
-    } catch (err) {
+ } catch (err) {
 
-        console.log(err);
+    console.error('ERRORE INTERAZIONE:', err);
 
-        if (!interaction.replied)
+    try {
 
-            interaction.reply({
+        if (!interaction.replied && !interaction.deferred) {
 
+            await interaction.reply({
                 content: '❌ Errore interno',
-
                 ephemeral: true
             });
+        }
+
+    } catch (e) {
+
+        console.error('ERRORE NEL REPLY:', e);
     }
+}
 });
+
 console.log("Avvio bot...");
 
 client.on('error', console.error);
@@ -1616,6 +1647,6 @@ process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
 
 // ================= LOGIN =================
+console.log('Avvio bot...');
 client.login(process.env.TOKEN);
-
 
